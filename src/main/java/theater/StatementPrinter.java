@@ -27,10 +27,7 @@ public class StatementPrinter {
         final StringBuilder result =
                 new StringBuilder("Statement for " + invoice.getCustomer() + System.lineSeparator());
 
-        final NumberFormat frmt = NumberFormat.getCurrencyInstance(Locale.US);
-
         // minimal magic-number fixes
-        final int centsToDollars = 100;
         final int tragedyBase = 40000;
         final int tragedyExtraPerSeat = 1000;
         final int tragedyThreshold = 30;
@@ -40,14 +37,14 @@ public class StatementPrinter {
             final int thisAmount =
                     getAmount(performance, tragedyBase, tragedyThreshold, tragedyExtraPerSeat);
 
-            // volume credits now extracted:
+            // Task 2.2 volume credits helper
             volumeCredits += getVolumeCredits(performance);
 
             // print line for this order
             result.append(String.format(
                     "  %s: %s (%s seats)%n",
                     getPlay(performance).getName(),
-                    frmt.format(thisAmount / centsToDollars),
+                    usd(thisAmount),
                     performance.getAudience()));
 
             totalAmount += thisAmount;
@@ -55,7 +52,7 @@ public class StatementPrinter {
 
         result.append(String.format(
                 "Amount owed is %s%n",
-                frmt.format(totalAmount / centsToDollars)));
+                usd(totalAmount)));
 
         result.append(String.format(
                 "You earned %s credits%n",
@@ -133,5 +130,17 @@ public class StatementPrinter {
         }
 
         return result;
+    }
+
+    /**
+     * Converts an amount in cents to a USD formatted string.
+     *
+     * @param amountInCents the amount in cents
+     * @return the amount formatted in US dollars
+     */
+    private String usd(int amountInCents) {
+        final int centsToDollars = 100;
+        final NumberFormat format = NumberFormat.getCurrencyInstance(Locale.US);
+        return format.format(amountInCents / centsToDollars);
     }
 }
