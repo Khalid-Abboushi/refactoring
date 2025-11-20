@@ -19,7 +19,6 @@ public class StatementPrinter {
     /**
      * Returns a formatted statement of the invoice associated with this printer.
      * @return the formatted statement
-     * @throws RuntimeException if one of the play types is not known
      */
     public String statement() {
         int totalAmount = 0;
@@ -41,22 +40,15 @@ public class StatementPrinter {
             final int thisAmount =
                     getAmount(performance, tragedyBase, tragedyThreshold, tragedyExtraPerSeat);
 
-            // add volume credits
-            volumeCredits += Math.max(
-                    performance.getAudience() - Constants.BASE_VOLUME_CREDIT_THRESHOLD, 0);
-
-            // add extra credit for every five comedy attendees
-            if ("comedy".equals(getPlay(performance).getType())) {
-                volumeCredits += performance.getAudience() / Constants.COMEDY_EXTRA_VOLUME_FACTOR;
-            }
+            // volume credits now extracted:
+            volumeCredits += getVolumeCredits(performance);
 
             // print line for this order
             result.append(String.format(
                     "  %s: %s (%s seats)%n",
                     getPlay(performance).getName(),
                     frmt.format(thisAmount / centsToDollars),
-                    performance.getAudience()
-            ));
+                    performance.getAudience()));
 
             totalAmount += thisAmount;
         }
@@ -86,7 +78,6 @@ public class StatementPrinter {
      * @return the calculated amount
      * @throws RuntimeException if the play type is unknown
      */
-
     private int getAmount(
             Performance performance,
             int tragedyBase,
@@ -116,6 +107,29 @@ public class StatementPrinter {
             default:
                 throw new RuntimeException(
                         String.format("unknown type: %s", getPlay(performance).getType()));
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculates the volume credits earned for a given performance.
+     *
+     * @param performance the performance being evaluated
+     * @return the number of volume credits earned
+     */
+    private int getVolumeCredits(Performance performance) {
+
+        int result = 0;
+
+        // base credit
+        result += Math.max(
+                performance.getAudience() - Constants.BASE_VOLUME_CREDIT_THRESHOLD,
+                0);
+
+        // bonus for comedy
+        if ("comedy".equals(getPlay(performance).getType())) {
+            result += performance.getAudience() / Constants.COMEDY_EXTRA_VOLUME_FACTOR;
         }
 
         return result;
