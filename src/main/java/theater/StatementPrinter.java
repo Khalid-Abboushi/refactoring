@@ -5,142 +5,178 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * This class generates a statement for a given invoice of performances.
+ * Generates a statement for a given invoice consisting of multiple performances.
  */
 public class StatementPrinter {
-    private Invoice invoice;
-    private Map<String, Play> plays;
 
+    private static final int CENTS_TO_DOLLARS = 100;
+    private static final int TRAGEDY_BASE = 40000;
+    private static final int TRAGEDY_EXTRA_PER_SEAT = 1000;
+    private static final int TRAGEDY_THRESHOLD = 30;
+
+    private final Invoice invoice;
+    private final Map<String, Play> plays;
+
+    /**
+     * Constructs a StatementPrinter.
+     *
+     * @param invoice the invoice containing performances
+     * @param plays   the map of playID to Play objects
+     */
     public StatementPrinter(Invoice invoice, Map<String, Play> plays) {
         this.invoice = invoice;
         this.plays = plays;
     }
 
     /**
-     * Returns a formatted statement of the invoice associated with this printer.
+     * Builds the formatted statement string for the invoice.
+     *
      * @return the formatted statement
      */
     public String statement() {
-        int totalAmount = 0;
-        int volumeCredits = 0;
 
-        final StringBuilder result =
-                new StringBuilder("Statement for " + invoice.getCustomer() + System.lineSeparator());
+        final StringBuilder result = new StringBuilder(
+                "Statement for " + invoice.getCustomer() + System.lineSeparator());
 
-        // minimal magic-number fixes
-        final int tragedyBase = 40000;
-        final int tragedyExtraPerSeat = 1000;
-        final int tragedyThreshold = 30;
+        final int volumeCredits = getTotalVolumeCredits();
+        final int totalAmount = getTotalAmount();
 
-        for (Performance performance : invoice.getPerformances()) {
+        appendPerformanceLines(result);
 
-            final int thisAmount =
-                    getAmount(performance, tragedyBase, tragedyThreshold, tragedyExtraPerSeat);
-
-            // Task 2.2 volume credits helper
-            volumeCredits += getVolumeCredits(performance);
-
-            // print line for this order
-            result.append(String.format(
-                    "  %s: %s (%s seats)%n",
-                    getPlay(performance).getName(),
-                    usd(thisAmount),
-                    performance.getAudience()));
-
-            totalAmount += thisAmount;
-        }
-
-        result.append(String.format(
-                "Amount owed is %s%n",
-                usd(totalAmount)));
-
-        result.append(String.format(
-                "You earned %s credits%n",
-                volumeCredits));
+        result.append(String.format("Amount owed is %s%n", usd(totalAmount)));
+        result.append(String.format("You earned %s credits%n", volumeCredits));
 
         return result.toString();
     }
 
+    /**
+     * Appends each performance's formatted line to the result builder.
+     *
+     * @param result the StringBuilder to append to
+     */
+    private void appendPerformanceLines(StringBuilder result) {
+        for (Performance performance : invoice.getPerformances()) {
+            final int amount = getAmount(performance);
+
+            result.append(
+                    String.format(
+                            "  %s: %s (%s seats)%n",
+                            getPlay(performance).getName(),
+                            usd(amount),
+                            performance.getAudience()
+                    )
+            );
+        }
+    }
+
+    /**
+     * Retrieves the Play associated with the given performance.
+     *
+     * @param performance the performance
+     * @return the matching Play
+     */
     private Play getPlay(Performance performance) {
         return plays.get(performance.getPlayID());
     }
 
     /**
-     * Calculates the amount owed for a given performance.
+     * Computes the cost for a single performance.
      *
      * @param performance the performance being evaluated
-     * @param tragedyBase the base amount for tragedy plays
-     * @param tragedyThreshold the audience threshold for extra tragedy charges
-     * @param tragedyExtraPerSeat the amount added per additional tragedy audience member
-     * @return the calculated amount
-     * @throws RuntimeException if the play type is unknown
+     * @return the cost of the performance in cents
+     * @throws RuntimeException if the play type is not recognized
      */
-    private int getAmount(
-            Performance performance,
-            int tragedyBase,
-            int tragedyThreshold,
-            int tragedyExtraPerSeat) {
+    private int getAmount(Performance performance) {
 
-        int result = 0;
+        int amount = 0;
+        final String type = getPlay(performance).getType();
+        final int audience = performance.getAudience();
 
-        switch (getPlay(performance).getType()) {
+        switch (type) {
             case "tragedy":
-                result = tragedyBase;
-                if (performance.getAudience() > tragedyThreshold) {
-                    result += tragedyExtraPerSeat * (performance.getAudience() - tragedyThreshold);
+                amount = TRAGEDY_BASE;
+                if (audience > TRAGEDY_THRESHOLD) {
+                    amount += TRAGEDY_EXTRA_PER_SEAT * (audience - TRAGEDY_THRESHOLD);
                 }
                 break;
 
             case "comedy":
-                result = Constants.COMEDY_BASE_AMOUNT;
-                if (performance.getAudience() > Constants.COMEDY_AUDIENCE_THRESHOLD) {
-                    result += Constants.COMEDY_OVER_BASE_CAPACITY_AMOUNT
+                amount = Constants.COMEDY_BASE_AMOUNT;
+
+                if (audience > Constants.COMEDY_AUDIENCE_THRESHOLD) {
+                    amount += Constants.COMEDY_OVER_BASE_CAPACITY_AMOUNT
                             + (Constants.COMEDY_OVER_BASE_CAPACITY_PER_PERSON
-                            * (performance.getAudience() - Constants.COMEDY_AUDIENCE_THRESHOLD));
+                            * (audience - Constants.COMEDY_AUDIENCE_THRESHOLD));
                 }
-                result += Constants.COMEDY_AMOUNT_PER_AUDIENCE * performance.getAudience();
+                amount += Constants.COMEDY_AMOUNT_PER_AUDIENCE * audience;
                 break;
 
             default:
                 throw new RuntimeException(
-                        String.format("unknown type: %s", getPlay(performance).getType()));
+                        String.format("unknown type: %s", type));
+        }
+
+        return amount;
+    }
+
+    /**
+     * Computes the total volume credits across all performances.
+     *
+     * @return total volume credits
+     */
+    private int getTotalVolumeCredits() {
+        int result = 0;
+
+        for (Performance performance : invoice.getPerformances()) {
+            result += getVolumeCredits(performance);
         }
 
         return result;
     }
 
     /**
-     * Calculates the volume credits earned for a given performance.
+     * Computes the volume credits for a single performance.
      *
      * @param performance the performance being evaluated
      * @return the number of volume credits earned
      */
     private int getVolumeCredits(Performance performance) {
 
+        int credits = Math.max(
+                performance.getAudience() - Constants.BASE_VOLUME_CREDIT_THRESHOLD,
+                0
+        );
+
+        if ("comedy".equals(getPlay(performance).getType())) {
+            credits += performance.getAudience() / Constants.COMEDY_EXTRA_VOLUME_FACTOR;
+        }
+
+        return credits;
+    }
+
+    /**
+     * Computes the total amount across all performances.
+     *
+     * @return the total amount in cents
+     */
+    private int getTotalAmount() {
         int result = 0;
 
-        // base credit
-        result += Math.max(
-                performance.getAudience() - Constants.BASE_VOLUME_CREDIT_THRESHOLD,
-                0);
-
-        // bonus for comedy
-        if ("comedy".equals(getPlay(performance).getType())) {
-            result += performance.getAudience() / Constants.COMEDY_EXTRA_VOLUME_FACTOR;
+        for (Performance performance : invoice.getPerformances()) {
+            result += getAmount(performance);
         }
 
         return result;
     }
 
     /**
-     * Converts an amount in cents to a USD formatted string.
+     * Formats an amount (in cents) into U.S. currency.
      *
      * @param amountInCents the amount in cents
-     * @return the amount formatted in US dollars
+     * @return USD formatted currency string
      */
     private String usd(int amountInCents) {
-        final int centsToDollars = 100;
-        final NumberFormat format = NumberFormat.getCurrencyInstance(Locale.US);
-        return format.format(amountInCents / centsToDollars);
+        final NumberFormat formatter = NumberFormat.getCurrencyInstance(Locale.US);
+        return formatter.format((double) amountInCents / CENTS_TO_DOLLARS);
     }
 }
